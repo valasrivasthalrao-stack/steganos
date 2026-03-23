@@ -1,0 +1,1340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>STEGANOS — Image Steganography</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+<style>
+/* ═══════════════════════════════════════════════════════════
+   DESIGN SYSTEM
+═══════════════════════════════════════════════════════════ */
+:root {
+  --bg:        #08080f;
+  --bg2:       #05050a;
+  --surface:   #0d0d1a;
+  --surface2:  #111120;
+  --border:    #1a1a30;
+  --border2:   #252545;
+  --green:     #00ff9d;
+  --purple:    #8b5cf6;
+  --red:       #ff4060;
+  --amber:     #f59e0b;
+  --text:      #c8c8e0;
+  --muted:     #44445a;
+  --white:     #ffffff;
+  --mono: 'Share Tech Mono', 'Courier New', monospace;
+  --display: 'Syne', sans-serif;
+  --g-green: 0 0 28px rgba(0,255,157,.25);
+  --g-purple: 0 0 28px rgba(139,92,246,.25);
+  --g-red: 0 0 28px rgba(255,64,96,.25);
+}
+
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html { height:100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 14px;
+  min-height: 100%;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* Noise texture overlay */
+body::before {
+  content:'';
+  position:fixed; inset:0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events:none; z-index:0; opacity:.4;
+}
+/* Scanlines */
+body::after {
+  content:''; position:fixed; inset:0; pointer-events:none; z-index:9998;
+  background: repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,255,157,.008) 3px,rgba(0,255,157,.008) 4px);
+}
+
+::-webkit-scrollbar { width:5px; background:var(--bg2); }
+::-webkit-scrollbar-thumb { background:var(--border2); border-radius:3px; }
+
+/* ═══════════════════════════════════════════════════════════
+   ANIMATIONS
+═══════════════════════════════════════════════════════════ */
+@keyframes fadeUp   { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+@keyframes fadeIn   { from{opacity:0} to{opacity:1} }
+@keyframes pulse    { 0%,100%{opacity:1;box-shadow:0 0 8px currentColor} 50%{opacity:.25;box-shadow:none} }
+@keyframes spin     { to{transform:rotate(360deg)} }
+@keyframes scanMove { from{top:-2px} to{top:100%} }
+@keyframes shimmer  { 0%{background-position:-300% center} 100%{background-position:300% center} }
+@keyframes glitch1  { 0%,100%{clip-path:inset(0 0 95% 0)} 20%{clip-path:inset(30% 0 50% 0)} 40%{clip-path:inset(60% 0 20% 0)} 60%{clip-path:inset(10% 0 80% 0)} 80%{clip-path:inset(80% 0 5% 0)} }
+@keyframes boot     { 0%{opacity:0;letter-spacing:1em} 60%{opacity:1;letter-spacing:.25em} 100%{opacity:1;letter-spacing:.15em} }
+
+/* ═══════════════════════════════════════════════════════════
+   BOOT SCREEN
+═══════════════════════════════════════════════════════════ */
+#boot {
+  position:fixed; inset:0; background:var(--bg2); z-index:9999;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2rem;
+  transition: opacity .6s ease, visibility .6s ease;
+}
+#boot.hidden { opacity:0; visibility:hidden; pointer-events:none; }
+.boot-logo {
+  font-family:var(--display); font-weight:800; font-size:3.5rem;
+  letter-spacing:.15em; color:var(--white);
+  animation: boot .8s ease forwards;
+}
+.boot-logo span { color:var(--green); text-shadow:var(--g-green); }
+.boot-bar-wrap { width:320px; }
+.boot-label { font-size:.65rem; letter-spacing:.3em; color:var(--muted); margin-bottom:.6rem; text-align:center; }
+.boot-track { height:2px; background:var(--border); border-radius:1px; overflow:hidden; }
+.boot-fill  {
+  height:100%; width:0; background:var(--green);
+  box-shadow:var(--g-green); border-radius:1px;
+  transition: width .05s linear;
+}
+.boot-status { font-size:.65rem; color:var(--muted); margin-top:.5rem; letter-spacing:.15em; min-height:1.2em; text-align:center; }
+
+/* ═══════════════════════════════════════════════════════════
+   LAYOUT
+═══════════════════════════════════════════════════════════ */
+#app { position:relative; z-index:1; display:flex; flex-direction:column; min-height:100vh; }
+
+/* ═══════════════════════════════════════════════════════════
+   HEADER
+═══════════════════════════════════════════════════════════ */
+header {
+  display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;
+  padding:1rem 2rem; border-bottom:1px solid var(--border); background:var(--surface);
+  position:sticky; top:0; z-index:100;
+}
+header::after {
+  content:''; position:absolute; bottom:-1px; left:0;
+  width:40%; height:1px;
+  background:linear-gradient(90deg,var(--green),rgba(0,255,157,.1),transparent);
+}
+.brand { display:flex; flex-direction:column; gap:.12rem; }
+.logo {
+  font-family:var(--display); font-weight:800; font-size:1.65rem;
+  letter-spacing:.12em; color:var(--white); line-height:1;
+  position:relative;
+}
+.logo-accent { color:var(--green); text-shadow:0 0 20px rgba(0,255,157,.5); }
+.logo-glitch {
+  position:absolute; top:0; left:0; width:100%;
+  color:var(--green); animation:glitch1 4s infinite;
+  clip-path:inset(0 0 95% 0); opacity:.6;
+  font-family:var(--display); font-weight:800; font-size:1.65rem; letter-spacing:.12em;
+}
+.tagline { display:flex; align-items:center; gap:.4rem; font-size:.62rem; letter-spacing:.25em; color:var(--muted); }
+.status-dot {
+  width:6px; height:6px; border-radius:50%; background:var(--green);
+  box-shadow:0 0 8px var(--green); animation:pulse 2.5s infinite;
+  color:var(--green); flex-shrink:0;
+}
+
+.nav {
+  display:flex; border:1px solid var(--border); border-radius:5px; overflow:hidden;
+}
+.nav-btn {
+  display:flex; flex-direction:column; align-items:flex-start; gap:.05rem;
+  padding:.52rem 1.15rem; background:transparent; border:none;
+  border-right:1px solid var(--border); color:var(--muted);
+  cursor:pointer; transition:all .18s; font-family:var(--mono);
+}
+.nav-btn:last-child { border-right:none; }
+.nav-btn:hover:not(.active) { background:rgba(255,255,255,.025); color:var(--text); }
+.nav-btn.active { background:rgba(0,255,157,.07); color:var(--green); }
+.nav-label { font-size:.74rem; letter-spacing:.17em; text-transform:uppercase; font-weight:700; }
+.nav-sub   { font-size:.56rem; letter-spacing:.1em; text-transform:uppercase; color:inherit; opacity:.6; }
+
+/* ═══════════════════════════════════════════════════════════
+   MAIN CONTENT
+═══════════════════════════════════════════════════════════ */
+main { flex:1; }
+
+.screen { display:none; }
+.screen.active {
+  display:grid; grid-template-columns:1fr 1fr; gap:1.5rem;
+  padding:1.8rem 2rem; max-width:1280px; margin:0 auto; width:100%;
+}
+.screen.about-screen { grid-template-columns:1fr; }
+
+@media(max-width:860px) {
+  .screen { grid-template-columns:1fr !important; padding:1rem; }
+  header { padding:.8rem 1rem; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PANEL
+═══════════════════════════════════════════════════════════ */
+.panel {
+  background:var(--surface); border:1px solid var(--border); border-radius:8px;
+  overflow:hidden; animation:fadeUp .4s ease both;
+}
+.panel-head {
+  display:flex; align-items:center; gap:.5rem;
+  padding:.65rem 1.2rem; border-bottom:1px solid var(--border);
+  font-size:.65rem; letter-spacing:.28em; text-transform:uppercase;
+  color:var(--muted); background:var(--surface2);
+}
+.panel-icon { font-size:.9rem; }
+.panel-body { padding:1.2rem; display:flex; flex-direction:column; gap:1rem; }
+.col { display:flex; flex-direction:column; gap:1.2rem; }
+
+/* ═══════════════════════════════════════════════════════════
+   DROP ZONE
+═══════════════════════════════════════════════════════════ */
+.drop-zone {
+  border:1.5px dashed var(--border2); border-radius:7px; cursor:pointer;
+  transition:all .2s; position:relative; overflow:hidden;
+}
+.drop-zone::before {
+  content:''; position:absolute; top:0; left:-100%; width:50%; height:1px;
+  background:linear-gradient(90deg,transparent,var(--green),transparent);
+  transition:left .7s ease;
+}
+.drop-zone:hover::before, .drop-zone.drag-over::before { left:160%; }
+.drop-zone:hover { border-color:var(--green); background:rgba(0,255,157,.025); }
+.drop-zone.drag-over { border-color:var(--green) !important; background:rgba(0,255,157,.05) !important; }
+.drop-zone.has-image { border-style:solid; border-color:rgba(0,255,157,.3); }
+.drop-placeholder {
+  padding:3.5rem 2rem; display:flex; flex-direction:column;
+  align-items:center; gap:.75rem; text-align:center;
+}
+.drop-hex { font-size:3.2rem; color:var(--muted); line-height:1; }
+.drop-title { font-size:.87rem; letter-spacing:.2em; color:var(--green); font-weight:700; }
+.drop-sub   { font-size:.7rem; color:var(--muted); line-height:1.7; }
+.img-preview { width:100%; display:block; max-height:290px; object-fit:contain; background:#030306; }
+.img-meta {
+  display:flex; gap:.4rem; flex-wrap:wrap;
+  padding:.55rem .8rem; background:rgba(0,0,0,.6);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   FORM ELEMENTS
+═══════════════════════════════════════════════════════════ */
+textarea, input[type=text], input[type=password] {
+  width:100%; background:rgba(0,0,0,.3); border:1px solid var(--border);
+  border-radius:5px; color:var(--text); font-family:var(--mono);
+  font-size:.87rem; padding:.8rem 1rem; outline:none; transition:border-color .2s;
+}
+textarea { resize:vertical; min-height:150px; line-height:1.7; }
+textarea:focus, input:focus { border-color:var(--green); }
+textarea::placeholder, input::placeholder { color:var(--muted); }
+
+.field-row { display:flex; align-items:center; background:rgba(0,0,0,.3);
+  border:1px solid var(--border); border-radius:5px; overflow:hidden; transition:border-color .2s; }
+.field-row:focus-within { border-color:var(--amber); }
+.field-row input { border:none; background:transparent; border-radius:0; padding:.75rem 1rem; }
+.field-row input:focus { border:none; }
+.eye-btn {
+  background:transparent; border:none; color:var(--muted);
+  padding:0 1rem; font-size:1.1rem; cursor:pointer; transition:color .15s; flex-shrink:0;
+  font-family:var(--mono);
+}
+.eye-btn:hover { color:var(--text); }
+
+.char-row { display:flex; justify-content:space-between; font-size:.63rem; color:var(--muted); letter-spacing:.1em; }
+
+/* ═══════════════════════════════════════════════════════════
+   CAPACITY BAR
+═══════════════════════════════════════════════════════════ */
+.cap-wrap { display:flex; flex-direction:column; gap:.4rem; }
+.cap-labels { display:flex; justify-content:space-between; font-size:.64rem; letter-spacing:.12em; color:var(--muted); }
+.cap-track { height:3px; background:var(--border); border-radius:2px; overflow:hidden; }
+.cap-fill  { height:100%; border-radius:2px; transition:width .35s ease, background .35s ease; background:var(--green); }
+
+/* ═══════════════════════════════════════════════════════════
+   BUTTONS
+═══════════════════════════════════════════════════════════ */
+.btn {
+  display:inline-flex; align-items:center; justify-content:center; gap:.5rem;
+  padding:.72rem 1.6rem; border-radius:5px; border:none;
+  font-family:var(--mono); font-size:.78rem; font-weight:700;
+  letter-spacing:.17em; text-transform:uppercase; cursor:pointer;
+  transition:all .18s ease; white-space:nowrap; position:relative; overflow:hidden;
+}
+.btn::after { content:''; position:absolute; inset:0; background:transparent; transition:background .15s; }
+.btn:hover:not(:disabled)::after { background:rgba(255,255,255,.07); }
+.btn:active:not(:disabled) { transform:scale(.98); }
+.btn:disabled { opacity:.35; cursor:not-allowed; }
+.btn-green  { background:var(--green); color:#000; }
+.btn-green:hover:not(:disabled)  { box-shadow:var(--g-green); }
+.btn-purple { background:var(--purple); color:#fff; }
+.btn-purple:hover:not(:disabled) { box-shadow:var(--g-purple); }
+.btn-ghost  { background:transparent; color:var(--green);  border:1px solid rgba(0,255,157,.35); }
+.btn-ghost:hover:not(:disabled)  { border-color:var(--green);  box-shadow:var(--g-green); }
+.btn-ghost-p{ background:transparent; color:var(--purple); border:1px solid rgba(139,92,246,.35); }
+.btn-ghost-p:hover:not(:disabled){ border-color:var(--purple); box-shadow:var(--g-purple); }
+.btn-row { display:flex; gap:.8rem; flex-wrap:wrap; }
+
+/* Spinner inside button */
+.spinner {
+  width:15px; height:15px; border:2px solid rgba(0,0,0,.2);
+  border-top-color:#000; border-radius:50%; animation:spin .65s linear infinite;
+}
+.btn-purple .spinner { border-color:rgba(255,255,255,.2); border-top-color:#fff; }
+
+/* ═══════════════════════════════════════════════════════════
+   TAGS / CHIPS
+═══════════════════════════════════════════════════════════ */
+.tag {
+  display:inline-block; padding:.17rem .52rem; border-radius:3px;
+  border:1px solid; font-size:.62rem; letter-spacing:.12em; text-transform:uppercase;
+}
+.tag-green  { color:var(--green);  border-color:rgba(0,255,157,.35);  background:rgba(0,255,157,.08); }
+.tag-purple { color:var(--purple); border-color:rgba(139,92,246,.35); background:rgba(139,92,246,.08); }
+.tag-amber  { color:var(--amber);  border-color:rgba(245,158,11,.35);  background:rgba(245,158,11,.08); }
+.tag-muted  { color:var(--muted);  border-color:var(--border2); background:transparent; }
+.tag-red    { color:var(--red);    border-color:rgba(255,64,96,.35);   background:rgba(255,64,96,.08); }
+
+/* ═══════════════════════════════════════════════════════════
+   ALERTS
+═══════════════════════════════════════════════════════════ */
+.alert {
+  display:flex; align-items:flex-start; gap:.55rem;
+  padding:.75rem 1rem; border-radius:5px; border:1px solid;
+  font-size:.78rem; line-height:1.55; animation:fadeIn .3s ease;
+}
+.alert-icon { flex-shrink:0; font-weight:700; }
+.alert-success { background:rgba(0,255,157,.07);  border-color:rgba(0,255,157,.28);  color:var(--green); }
+.alert-error   { background:rgba(255,64,96,.07);   border-color:rgba(255,64,96,.28);   color:var(--red); }
+.alert-info    { background:rgba(139,92,246,.07);  border-color:rgba(139,92,246,.28);  color:#c4a8ff; }
+.alert-warn    { background:rgba(245,158,11,.07);  border-color:rgba(245,158,11,.28);  color:var(--amber); }
+
+/* ═══════════════════════════════════════════════════════════
+   INFO GRID (image metadata)
+═══════════════════════════════════════════════════════════ */
+.info-grid { display:flex; flex-direction:column; gap:.28rem; margin-top:.8rem; }
+.info-row {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:.28rem 0; border-bottom:1px solid var(--border);
+  font-size:.75rem;
+}
+.info-row:last-child { border-bottom:none; }
+.info-key { font-size:.6rem; letter-spacing:.2em; color:var(--muted); }
+.info-val { color:var(--text); }
+
+/* ═══════════════════════════════════════════════════════════
+   DECODED OUTPUT BOX
+═══════════════════════════════════════════════════════════ */
+.decoded-box {
+  background:rgba(139,92,246,.06); border:1px solid rgba(139,92,246,.22);
+  border-radius:6px; padding:1rem; max-height:320px; overflow-y:auto;
+}
+.decoded-text {
+  color:#e0d0ff; font-size:.85rem; line-height:1.8;
+  white-space:pre-wrap; word-break:break-word; font-family:var(--mono);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ABOUT SCREEN
+═══════════════════════════════════════════════════════════ */
+.about-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:1.2rem; }
+@media(max-width:960px) { .about-grid { grid-template-columns:1fr 1fr; } }
+@media(max-width:640px) { .about-grid { grid-template-columns:1fr; } }
+
+.about-hero {
+  grid-column:1/-1;
+  display:flex; flex-direction:column; align-items:center; gap:.7rem;
+  padding:2.5rem 1.5rem; border:1px solid var(--border); border-radius:8px;
+  background:linear-gradient(135deg,var(--surface) 55%,rgba(0,255,157,.03));
+  text-align:center; position:relative; overflow:hidden;
+  animation:fadeUp .4s ease both;
+}
+.about-hero::before {
+  content:'STEGANOS'; position:absolute; font-family:var(--display);
+  font-weight:800; font-size:7rem; color:rgba(0,255,157,.025);
+  top:50%; left:50%; transform:translate(-50%,-50%); pointer-events:none;
+  white-space:nowrap; letter-spacing:.1em;
+}
+.hero-logo { font-family:var(--display); font-weight:800; font-size:2.4rem; letter-spacing:.12em; color:var(--white); }
+.hero-sub  { font-size:.85rem; color:var(--muted); letter-spacing:.07em; max-width:460px; }
+.hero-badges { display:flex; gap:.4rem; flex-wrap:wrap; justify-content:center; }
+
+.about-card { animation:fadeUp .4s ease both; }
+.steps-list { display:flex; flex-direction:column; gap:.6rem; }
+.step-row   { display:flex; align-items:flex-start; gap:.7rem; }
+.step-num   {
+  font-size:.6rem; color:var(--green); border:1px solid rgba(0,255,157,.3);
+  padding:.1rem .45rem; border-radius:2px; flex-shrink:0; margin-top:.12rem;
+}
+.step-text { font-size:.76rem; color:var(--text); line-height:1.6; }
+
+.formula-box {
+  background:rgba(0,0,0,.35); border:1px solid var(--border2); border-radius:5px;
+  padding:.8rem 1rem; font-size:.85rem; color:var(--green); text-align:center; letter-spacing:.05em;
+}
+
+table { width:100%; border-collapse:collapse; font-size:.76rem; }
+th { text-align:left; padding:.42rem .55rem; border-bottom:1px solid var(--border);
+  font-size:.62rem; letter-spacing:.15em; color:var(--muted); font-weight:400; text-transform:uppercase; }
+td { padding:.42rem .55rem; border-bottom:1px solid var(--border); color:var(--text); }
+tr:last-child td { border-bottom:none; }
+tr:hover td { background:rgba(255,255,255,.018); }
+
+.tips-list { display:flex; flex-direction:column; gap:.5rem; }
+.tip-row   { display:flex; align-items:flex-start; gap:.6rem; font-size:.76rem; color:var(--text); line-height:1.6; }
+.tip-bullet { color:var(--green); flex-shrink:0; font-size:.9rem; }
+
+/* ═══════════════════════════════════════════════════════════
+   FOOTER
+═══════════════════════════════════════════════════════════ */
+footer {
+  padding:.8rem 2rem; border-top:1px solid var(--border);
+  font-size:.62rem; color:var(--muted); letter-spacing:.15em;
+  display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.5rem;
+  background:var(--surface);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   EMPTY STATE
+═══════════════════════════════════════════════════════════ */
+.empty-state {
+  display:flex; flex-direction:column; align-items:center; gap:.7rem;
+  padding:3rem 1.5rem; text-align:center;
+}
+.empty-icon  { font-size:3rem; color:var(--muted); opacity:.3; }
+.empty-title { font-size:.74rem; letter-spacing:.25em; color:var(--muted); }
+.empty-body  { font-size:.73rem; color:var(--muted); line-height:1.7; max-width:280px; }
+
+/* hint text */
+.hint { font-size:.68rem; color:var(--muted); line-height:1.6; margin-top:.4rem; }
+
+/* section label */
+.section-label { font-size:.62rem; letter-spacing:.25em; text-transform:uppercase; color:var(--muted); margin-bottom:.5rem; }
+
+/* Scan line animation on image */
+.img-wrap { position:relative; overflow:hidden; }
+.img-wrap::after {
+  content:''; position:absolute; left:0; width:100%; height:1px;
+  background:linear-gradient(90deg,transparent,var(--green),transparent);
+  opacity:.35; animation:scanMove 2s linear infinite;
+}
+</style>
+</head>
+<body>
+
+<!-- ═══ BOOT SCREEN ═══════════════════════════════════════════════════════ -->
+<div id="boot">
+  <div class="boot-logo">STEG<span>ANOS</span></div>
+  <div class="boot-bar-wrap">
+    <div class="boot-label">INITIALIZING STEGANOGRAPHY ENGINE</div>
+    <div class="boot-track"><div class="boot-fill" id="bootFill"></div></div>
+    <div class="boot-status" id="bootStatus">Loading modules…</div>
+  </div>
+</div>
+
+<!-- ═══ APP ═══════════════════════════════════════════════════════════════ -->
+<div id="app" style="opacity:0; transition:opacity .5s ease;">
+
+  <!-- HEADER -->
+  <header>
+    <div class="brand">
+      <div class="logo">
+        STEG<span class="logo-accent">ANOS</span>
+        <span class="logo-glitch" aria-hidden="true">STEGANOS</span>
+      </div>
+      <div class="tagline">
+        <span class="status-dot"></span>
+        LSB IMAGE STEGANOGRAPHY · 100% CLIENT-SIDE · ZERO UPLOADS
+      </div>
+    </div>
+    <nav class="nav">
+      <button class="nav-btn active" onclick="showTab('encode',this)">
+        <span class="nav-label">⬛ ENCODE</span>
+        <span class="nav-sub">Hide message</span>
+      </button>
+      <button class="nav-btn" onclick="showTab('decode',this)">
+        <span class="nav-label">⬜ DECODE</span>
+        <span class="nav-sub">Extract message</span>
+      </button>
+      <button class="nav-btn" onclick="showTab('about',this)">
+        <span class="nav-label">◈ ABOUT</span>
+        <span class="nav-sub">How it works</span>
+      </button>
+    </nav>
+  </header>
+
+  <main>
+
+    <!-- ═══════════════════════════════════════════════════════
+         ENCODE SCREEN
+    ═══════════════════════════════════════════════════════ -->
+    <section class="screen active" id="screen-encode">
+
+      <!-- LEFT: Image -->
+      <div class="col">
+        <div class="panel" style="animation-delay:.0s">
+          <div class="panel-head"><span class="panel-icon" style="color:var(--green)">⬛</span> CARRIER IMAGE</div>
+          <div class="panel-body">
+
+            <div class="drop-zone" id="encDropZone" onclick="document.getElementById('encFile').click()">
+              <div class="drop-placeholder" id="encDropPlaceholder">
+                <div class="drop-hex">⬡</div>
+                <div class="drop-title">DROP IMAGE HERE</div>
+                <div class="drop-sub">PNG · JPG · WEBP · BMP<br>Larger image = more capacity</div>
+              </div>
+              <div id="encImgWrap" style="display:none;" class="img-wrap">
+                <img id="encImg" class="img-preview" alt="Carrier"/>
+                <div class="img-meta" id="encImgMeta"></div>
+              </div>
+            </div>
+            <input type="file" id="encFile" accept="image/*" hidden onchange="handleEncodeFile(this.files[0])"/>
+
+            <div class="info-grid" id="encInfoGrid" style="display:none">
+              <div class="info-row"><span class="info-key">FILE</span><span class="info-val" id="encInfoName">—</span></div>
+              <div class="info-row"><span class="info-key">SIZE</span><span class="info-val" id="encInfoSize">—</span></div>
+              <div class="info-row"><span class="info-key">DIMENSIONS</span><span class="info-val" id="encInfoDims">—</span></div>
+              <div class="info-row"><span class="info-key">MAX CAPACITY</span>
+                <span class="info-val" id="encInfoCap" style="color:var(--green)">—</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Technique note -->
+        <div class="panel" style="animation-delay:.08s">
+          <div class="panel-head"><span class="panel-icon" style="color:var(--purple)">◉</span> LSB TECHNIQUE</div>
+          <div class="panel-body">
+            <div class="steps-list">
+              <div class="step-row"><span class="step-num">01</span><span class="step-text">Each pixel has RGB channels (0–255). The <strong style="color:var(--green)">last bit</strong> of each is changed to store 1 bit of data.</span></div>
+              <div class="step-row"><span class="step-num">02</span><span class="step-text">A change from 200→201 is <strong style="color:var(--green)">invisible</strong> to human vision but perfectly recoverable by software.</span></div>
+              <div class="step-row"><span class="step-num">03</span><span class="step-text">1920×1080 image = <strong style="color:var(--green)">~777,600 chars</strong> hidden capacity.</span></div>
+              <div class="step-row"><span class="step-num">04</span><span class="step-text">Output is always <strong style="color:var(--amber)">PNG</strong> — JPEG recompression permanently destroys LSB data.</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Message + actions -->
+      <div class="col">
+        <div class="panel" style="animation-delay:.05s">
+          <div class="panel-head"><span class="panel-icon" style="color:var(--green)">⬡</span> SECRET MESSAGE</div>
+          <div class="panel-body">
+            <textarea id="encMessage" placeholder="Enter the message to hide inside the image…"
+              oninput="updateCapacity()"></textarea>
+            <div class="char-row">
+              <span id="encCharCount">0 characters</span>
+              <span id="encNearLimit" style="color:var(--red);display:none">⚠ NEAR LIMIT</span>
+            </div>
+            <div class="cap-wrap" id="encCapWrap" style="display:none">
+              <div class="cap-labels">
+                <span>PAYLOAD</span><span id="encCapPct" style="color:var(--green)">0%</span>
+              </div>
+              <div class="cap-track"><div class="cap-fill" id="encCapFill" style="width:0%"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" style="animation-delay:.10s">
+          <div class="panel-head"><span class="panel-icon" style="color:var(--amber)">◈</span> PASSKEY ENCRYPTION (OPTIONAL)</div>
+          <div class="panel-body">
+            <div class="field-row">
+              <input type="password" id="encPasskey" placeholder="XOR encryption key — share separately with recipient"/>
+              <button class="eye-btn" onclick="togglePass('encPasskey',this)">○</button>
+            </div>
+            <p class="hint">If set, message bytes are XOR-encrypted before encoding. Recipient must use the same key to decode.</p>
+          </div>
+        </div>
+
+        <div id="encStatus"></div>
+
+        <div class="btn-row" style="animation:fadeUp .4s .25s ease both">
+          <button class="btn btn-green" id="encodeBtn" onclick="doEncode()" disabled>
+            ⬛ ENCODE &amp; DOWNLOAD PNG
+          </button>
+          <button class="btn btn-ghost" onclick="clearEncode()">CLEAR</button>
+        </div>
+
+        <div class="panel" style="animation-delay:.15s; background:rgba(139,92,246,.04); border-color:rgba(139,92,246,.2)">
+          <div class="panel-head"><span class="panel-icon" style="color:var(--purple)">🔐</span> HOW ENCODING WORKS</div>
+          <div class="panel-body">
+            <div class="steps-list">
+              <div class="step-row"><span class="step-num" style="color:var(--purple);border-color:rgba(139,92,246,.3)">01</span><span class="step-text">Image loaded via Canvas API → raw RGBA pixel array extracted</span></div>
+              <div class="step-row"><span class="step-num" style="color:var(--purple);border-color:rgba(139,92,246,.3)">02</span><span class="step-text">Message optionally XOR-encrypted with passkey byte by byte</span></div>
+              <div class="step-row"><span class="step-num" style="color:var(--purple);border-color:rgba(139,92,246,.3)">03</span><span class="step-text"><code style="color:var(--green)">STGNS::</code> header prepended + 32-bit length header</span></div>
+              <div class="step-row"><span class="step-num" style="color:var(--purple);border-color:rgba(139,92,246,.3)">04</span><span class="step-text">Each bit written into LSB of R/G/B channels, pixel by pixel</span></div>
+              <div class="step-row"><span class="step-num" style="color:var(--purple);border-color:rgba(139,92,246,.3)">05</span><span class="step-text">Modified pixels re-drawn to canvas → exported as lossless PNG download</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════
+         DECODE SCREEN
+    ═══════════════════════════════════════════════════════ -->
+    <section class="screen" id="screen-decode">
+
+      <!-- LEFT -->
+      <div class="col">
+        <div class="panel">
+          <div class="panel-head"><span class="panel-icon" style="color:var(--purple)">⬜</span> STEGO IMAGE</div>
+          <div class="panel-body">
+            <div class="drop-zone" id="decDropZone" onclick="document.getElementById('decFile').click()">
+              <div class="drop-placeholder" id="decDropPlaceholder">
+                <div class="drop-hex" style="color:var(--purple)">⬡</div>
+                <div class="drop-title" style="color:var(--purple)">DROP STEGO IMAGE</div>
+                <div class="drop-sub">Must be STEGANOS-encoded PNG<br>JPEG destroys hidden data</div>
+              </div>
+              <div id="decImgWrap" style="display:none;" class="img-wrap">
+                <img id="decImg" class="img-preview" alt="Stego"/>
+                <div class="img-meta" id="decImgMeta"></div>
+              </div>
+            </div>
+            <input type="file" id="decFile" accept="image/*" hidden onchange="handleDecodeFile(this.files[0])"/>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><span class="panel-icon" style="color:var(--amber)">◈</span> PASSKEY</div>
+          <div class="panel-body">
+            <div class="field-row">
+              <input type="password" id="decPasskey" placeholder="Enter key if message was encrypted (leave blank otherwise)"/>
+              <button class="eye-btn" onclick="togglePass('decPasskey',this)">○</button>
+            </div>
+            <p class="hint">Wrong key = garbled output. The app will warn you if non-printable characters are detected.</p>
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn btn-purple" id="decodeBtn" onclick="doDecode()" disabled>
+            ⬜ EXTRACT MESSAGE
+          </button>
+          <button class="btn btn-ghost" onclick="clearDecode()">CLEAR</button>
+        </div>
+
+        <div id="decStatus"></div>
+
+        <!-- Warnings panel -->
+        <div class="panel" style="border-color:rgba(255,64,96,.2); background:rgba(255,64,96,.03)">
+          <div class="panel-head"><span class="panel-icon" style="color:var(--red)">⚠</span> IMPORTANT NOTES</div>
+          <div class="panel-body">
+            <div class="steps-list">
+              <div class="step-row">
+                <span class="step-num" style="color:var(--red);border-color:rgba(255,64,96,.3)">!</span>
+                <span class="step-text" style="color:var(--text)"><strong style="color:var(--red)">JPEG kills data.</strong> The stego file must remain PNG throughout. Re-saving as JPEG permanently destroys hidden bits.</span>
+              </div>
+              <div class="step-row">
+                <span class="step-num" style="color:var(--green);border-color:rgba(0,255,157,.3)">✓</span>
+                <span class="step-text"><strong style="color:var(--green)">Privacy.</strong> All decoding runs in your browser. No file is uploaded anywhere.</span>
+              </div>
+              <div class="step-row">
+                <span class="step-num" style="color:var(--amber);border-color:rgba(245,158,11,.3)">?</span>
+                <span class="step-text"><strong style="color:var(--amber)">Wrong key.</strong> Incorrect passkey outputs garbled text. The app detects this and shows an error.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Output -->
+      <div class="col">
+        <div class="panel" style="flex:1">
+          <div class="panel-head"><span class="panel-icon" style="color:var(--purple)">◉</span> EXTRACTED MESSAGE</div>
+          <div class="panel-body" id="decOutput">
+            <div class="empty-state">
+              <div class="empty-icon">⬜</div>
+              <div class="empty-title">AWAITING EXTRACTION</div>
+              <div class="empty-body">Load a STEGANOS-encoded PNG and click "Extract Message" to reveal hidden content.</div>
+              <div class="steps-list" style="margin-top:1rem; width:100%; max-width:300px; text-align:left">
+                <div class="step-row"><span class="step-num" style="color:var(--purple);border-color:rgba(139,92,246,.3)">01</span><span class="step-text">Drop a STEGANOS-encoded PNG</span></div>
+                <div class="step-row"><span class="step-num" style="color:var(--purple);border-color:rgba(139,92,246,.3)">02</span><span class="step-text">Enter passkey if message was encrypted</span></div>
+                <div class="step-row"><span class="step-num" style="color:var(--purple);border-color:rgba(139,92,246,.3)">03</span><span class="step-text">Click Extract Message</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════
+         ABOUT SCREEN
+    ═══════════════════════════════════════════════════════ -->
+    <section class="screen about-screen" id="screen-about">
+      <div style="max-width:1100px;margin:0 auto;width:100%">
+
+        <div class="about-hero">
+          <div class="hero-logo">STEG<span style="color:var(--green)">ANOS</span></div>
+          <div class="hero-sub">Hide secret messages inside ordinary images. Share secrets in plain sight.</div>
+          <div class="hero-badges">
+            <span class="tag tag-green">LSB Algorithm</span>
+            <span class="tag tag-amber">XOR Encryption</span>
+            <span class="tag tag-purple">Canvas API</span>
+            <span class="tag tag-muted">100% Client-Side</span>
+            <span class="tag tag-muted">Zero Dependencies</span>
+            <span class="tag tag-muted">No Upload</span>
+          </div>
+        </div>
+
+        <div class="about-grid" style="margin-top:1.5rem">
+
+          <!-- Algorithm -->
+          <div class="panel about-card" style="animation-delay:.05s">
+            <div class="panel-head"><span class="panel-icon" style="color:var(--green)">⬛</span> LSB STEGANOGRAPHY</div>
+            <div class="panel-body">
+              <div class="steps-list">
+                <div class="step-row"><span class="step-num">01</span><span class="step-text">Each pixel = 4 channels: R, G, B, A. Each channel = 8 bits.</span></div>
+                <div class="step-row"><span class="step-num">02</span><span class="step-text">Only the <strong style="color:var(--green)">least significant bit</strong> (bit 0) is modified. Value changes by ±1 at most.</span></div>
+                <div class="step-row"><span class="step-num">03</span><span class="step-text">3 bits stored per pixel (R, G, B). Alpha is untouched.</span></div>
+                <div class="step-row"><span class="step-num">04</span><span class="step-text">First 32 pixels store the message <strong style="color:var(--green)">length header</strong>. Remaining store payload.</span></div>
+                <div class="step-row"><span class="step-num">05</span><span class="step-text">The <code style="color:var(--green)">STGNS::</code> signature verifies authorship during decode.</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- XOR Encryption -->
+          <div class="panel about-card" style="animation-delay:.10s">
+            <div class="panel-head"><span class="panel-icon" style="color:var(--amber)">◈</span> XOR ENCRYPTION</div>
+            <div class="panel-body">
+              <div class="steps-list">
+                <div class="step-row"><span class="step-num">01</span><span class="step-text">Passkey bytes XOR-combined with message bytes cyclically.</span></div>
+                <div class="step-row"><span class="step-num">02</span><span class="step-text"><strong style="color:var(--amber)">Symmetric</strong> — same operation encodes AND decodes.</span></div>
+                <div class="step-row"><span class="step-num">03</span><span class="step-text">Wrong key → non-printable output → app rejects and warns.</span></div>
+                <div class="step-row"><span class="step-num">04</span><span class="step-text">Example: <code>A(65) XOR K(75) = 10</code>. Applying again: <code>10 XOR K(75) = 65 = A</code>.</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Capacity formula -->
+          <div class="panel about-card" style="animation-delay:.15s">
+            <div class="panel-head"><span class="panel-icon" style="color:var(--purple)">⬡</span> CAPACITY FORMULA</div>
+            <div class="panel-body">
+              <div class="formula-box">max_chars = ⌊(W × H × 3 − 32) ÷ 8⌋</div>
+              <table style="margin-top:.8rem">
+                <thead><tr><th>Resolution</th><th>Pixels</th><th style="color:var(--purple)">Max Chars</th></tr></thead>
+                <tbody>
+                  <tr><td>640×480</td><td>307,200</td><td style="color:var(--purple)">~115,200</td></tr>
+                  <tr><td>1280×720</td><td>921,600</td><td style="color:var(--purple)">~345,600</td></tr>
+                  <tr><td>1920×1080</td><td>2,073,600</td><td style="color:var(--purple)">~777,600</td></tr>
+                  <tr><td>3840×2160</td><td>8,294,400</td><td style="color:var(--purple)">~3,110,400</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Best Practices -->
+          <div class="panel about-card" style="animation-delay:.20s">
+            <div class="panel-head"><span class="panel-icon" style="color:var(--green)">💡</span> BEST PRACTICES</div>
+            <div class="panel-body">
+              <div class="tips-list">
+                <div class="tip-row"><span class="tip-bullet">›</span><span>Always use <strong style="color:var(--amber)">PNG</strong> — never re-save encoded images as JPEG.</span></div>
+                <div class="tip-row"><span class="tip-bullet">›</span><span>Larger images offer more capacity and make detection harder.</span></div>
+                <div class="tip-row"><span class="tip-bullet">›</span><span>Share passkeys through a different channel than the image.</span></div>
+                <div class="tip-row"><span class="tip-bullet">›</span><span>The encoded image is visually <strong style="color:var(--green)">identical</strong> to the original.</span></div>
+                <div class="tip-row"><span class="tip-bullet">›</span><span>You can hide any UTF-8 text: passwords, JSON, coordinates, code.</span></div>
+                <div class="tip-row"><span class="tip-bullet">›</span><span>XOR is not AES — for high security, encrypt externally before encoding.</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Privacy -->
+          <div class="panel about-card" style="animation-delay:.25s">
+            <div class="panel-head"><span class="panel-icon" style="color:var(--green)">🔒</span> PRIVACY</div>
+            <div class="panel-body">
+              <div class="tips-list">
+                <div class="tip-row"><span class="tip-bullet" style="color:var(--green)">✓</span><span>Runs entirely in your browser — <strong style="color:var(--green)">zero uploads</strong>.</span></div>
+                <div class="tip-row"><span class="tip-bullet" style="color:var(--green)">✓</span><span>No server, no API, no network requests of any kind.</span></div>
+                <div class="tip-row"><span class="tip-bullet" style="color:var(--green)">✓</span><span>Works offline once the page is loaded.</span></div>
+                <div class="tip-row"><span class="tip-bullet" style="color:var(--green)">✓</span><span>No analytics, no cookies, no telemetry.</span></div>
+                <div class="tip-row"><span class="tip-bullet" style="color:var(--green)">✓</span><span>Source code is fully readable in this single HTML file.</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tech stack -->
+          <div class="panel about-card" style="animation-delay:.30s">
+            <div class="panel-head"><span class="panel-icon" style="color:var(--purple)">◈</span> TECH STACK</div>
+            <div class="panel-body">
+              <table>
+                <thead><tr><th>Technology</th><th>Used For</th></tr></thead>
+                <tbody>
+                  <tr><td style="color:var(--green)">HTML5 Canvas</td><td>Read/write pixel data</td></tr>
+                  <tr><td style="color:var(--green)">Uint8ClampedArray</td><td>Direct pixel manipulation</td></tr>
+                  <tr><td style="color:var(--amber)">XOR Cipher</td><td>Optional encryption</td></tr>
+                  <tr><td style="color:var(--purple)">Blob + URL.createObjectURL</td><td>PNG download</td></tr>
+                  <tr><td style="color:var(--muted)">Vanilla JS</td><td>Zero frameworks</td></tr>
+                  <tr><td style="color:var(--muted)">CSS Variables</td><td>Design system</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <span>STEGANOS — MIT License · Zero dependencies · Single HTML file · Works offline</span>
+    <span id="footerCap" style="color:var(--purple)"></span>
+  </footer>
+
+</div><!-- /#app -->
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     JAVASCRIPT — COMPLETE FUNCTIONAL LOGIC
+═══════════════════════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BOOT SEQUENCE
+// ─────────────────────────────────────────────────────────────────────────────
+(function boot() {
+  const fill    = document.getElementById('bootFill');
+  const status  = document.getElementById('bootStatus');
+  const bootEl  = document.getElementById('boot');
+  const appEl   = document.getElementById('app');
+
+  const steps = [
+    [10,  'Loading LSB engine…'],
+    [30,  'Initialising Canvas API…'],
+    [50,  'Preparing XOR cipher…'],
+    [70,  'Loading pixel decoder…'],
+    [88,  'Verifying STGNS:: protocol…'],
+    [100, 'Ready.'],
+  ];
+
+  let i = 0;
+  function tick() {
+    if (i >= steps.length) {
+      setTimeout(() => {
+        bootEl.classList.add('hidden');
+        appEl.style.opacity = '1';
+      }, 300);
+      return;
+    }
+    const [pct, msg] = steps[i++];
+    fill.style.width = pct + '%';
+    status.textContent = msg;
+    setTimeout(tick, i === steps.length ? 200 : 220);
+  }
+  setTimeout(tick, 300);
+})();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB ROUTING
+// ─────────────────────────────────────────────────────────────────────────────
+function showTab(name, btn) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('screen-' + name).classList.add('active');
+  btn.classList.add('active');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STEGANOGRAPHY ENGINE
+// ─────────────────────────────────────────────────────────────────────────────
+const HEADER = 'STGNS::';
+
+function getCapacity(w, h) {
+  return Math.floor((w * h * 3 - 32) / 8);
+}
+
+// XOR cipher — symmetric, handles UTF-8 via TextEncoder/Decoder
+function xorCipher(uint8, key) {
+  if (!key) return uint8;
+  const keyBytes = new TextEncoder().encode(key);
+  const result   = new Uint8Array(uint8.length);
+  for (let i = 0; i < uint8.length; i++) {
+    result[i] = uint8[i] ^ keyBytes[i % keyBytes.length];
+  }
+  return result;
+}
+
+// LSB encode: takes Uint8ClampedArray RGBA pixels, returns modified copy or null
+function lsbEncode(pixels, message) {
+  const data = new Uint8ClampedArray(pixels);
+
+  // Convert message string to UTF-8 bytes
+  const msgBytes = new TextEncoder().encode(message);
+  const len      = msgBytes.length;
+
+  // Build flat bit array: [32-bit big-endian length] + [8 bits × each byte]
+  const bits = new Uint8Array(32 + len * 8);
+  for (let b = 0; b < 32; b++) bits[b] = (len >> (31 - b)) & 1;
+  for (let i = 0; i < len; i++) {
+    for (let b = 0; b < 8; b++) bits[32 + i * 8 + b] = (msgBytes[i] >> (7 - b)) & 1;
+  }
+
+  // Capacity check (skip every 4th byte = alpha)
+  const usable = Math.floor(data.length / 4) * 3;
+  if (bits.length > usable) return null;
+
+  let bitIdx = 0;
+  for (let i = 0; i < data.length && bitIdx < bits.length; i++) {
+    if ((i + 1) % 4 === 0) continue; // skip alpha
+    data[i] = (data[i] & 0xfe) | bits[bitIdx++];
+  }
+  return data;
+}
+
+// LSB decode: extracts hidden string from Uint8ClampedArray RGBA pixels
+function lsbDecode(pixels) {
+  const bits = [];
+  for (let i = 0; i < pixels.length; i++) {
+    if ((i + 1) % 4 === 0) continue;
+    bits.push(pixels[i] & 1);
+  }
+
+  // Read 32-bit big-endian length
+  let len = 0;
+  for (let b = 0; b < 32; b++) len = (len << 1) | bits[b];
+
+  if (len <= 0 || len > 10_000_000) return null;
+
+  // Read payload bytes
+  const msgBytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    let byte = 0;
+    for (let b = 0; b < 8; b++) {
+      const pos = 32 + i * 8 + b;
+      if (pos >= bits.length) return null;
+      byte = (byte << 1) | bits[pos];
+    }
+    msgBytes[i] = byte;
+  }
+
+  try {
+    return new TextDecoder().decode(msgBytes);
+  } catch {
+    return null;
+  }
+}
+
+// Printability check (detects wrong passkey)
+function isPrintable(str) {
+  for (const c of str) {
+    const code = c.charCodeAt(0);
+    if (code < 32 && code !== 9 && code !== 10 && code !== 13) return false;
+  }
+  return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CANVAS IMAGE HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+function loadImagePixels(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width  = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      resolve({ imageData, width: canvas.width, height: canvas.height, canvas, ctx });
+    };
+    img.onerror = () => reject(new Error('Cannot load image — try a different file.'));
+    img.src = url;
+  });
+}
+
+function downloadPng(pixels, width, height, filename) {
+  const canvas = document.createElement('canvas');
+  canvas.width  = width;
+  canvas.height = height;
+  const ctx     = canvas.getContext('2d');
+  ctx.putImageData(new ImageData(pixels, width, height), 0, 0);
+  canvas.toBlob(blob => {
+    const url = URL.createObjectURL(blob);
+    const a   = Object.assign(document.createElement('a'), {
+      href: url, download: filename || `steganos_${Date.now()}.png`
+    });
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  }, 'image/png');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UI HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+function setAlert(containerId, type, msg) {
+  const icons = { success:'✓', error:'✕', info:'ℹ', warn:'⚠' };
+  const el    = document.getElementById(containerId);
+  el.innerHTML = `
+    <div class="alert alert-${type}">
+      <span class="alert-icon">${icons[type]||'•'}</span>
+      <span>${msg}</span>
+    </div>`;
+}
+
+function clearAlert(containerId) {
+  document.getElementById(containerId).innerHTML = '';
+}
+
+function makeTag(text, cls) {
+  return `<span class="tag ${cls}">${text}</span>`;
+}
+
+function togglePass(inputId, btn) {
+  const inp = document.getElementById(inputId);
+  const show = inp.type === 'password';
+  inp.type   = show ? 'text' : 'password';
+  btn.textContent = show ? '◉' : '○';
+}
+
+function setBtnLoading(id, loading) {
+  const btn = document.getElementById(id);
+  if (loading) {
+    btn.dataset.originalText = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner"></span>';
+    btn.disabled  = true;
+  } else {
+    btn.innerHTML = btn.dataset.originalText || btn.innerHTML;
+    btn.disabled  = false;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENCODE STATE
+// ─────────────────────────────────────────────────────────────────────────────
+let encState = { imageData: null, width: 0, height: 0, capacity: 0 };
+
+function handleEncodeFile(file) {
+  if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    setAlert('encStatus', 'error', 'Please select a valid image file (PNG, JPG, WEBP, BMP).');
+    return;
+  }
+  clearAlert('encStatus');
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('encImg').src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+
+  loadImagePixels(file).then(({ imageData, width, height }) => {
+    encState = { imageData, width, height, capacity: getCapacity(width, height) };
+
+    // Show preview
+    document.getElementById('encDropPlaceholder').style.display = 'none';
+    document.getElementById('encImgWrap').style.display = 'block';
+    document.getElementById('encDropZone').classList.add('has-image');
+
+    // Meta tags
+    document.getElementById('encImgMeta').innerHTML =
+      makeTag(`${width}×${height}px`, 'tag-green') +
+      makeTag(`~${encState.capacity.toLocaleString()} chars max`, 'tag-purple') +
+      makeTag(file.name.split('.').pop().toUpperCase(), 'tag-muted') +
+      makeTag('Click to change', 'tag-muted');
+
+    // Info grid
+    document.getElementById('encInfoName').textContent = file.name;
+    document.getElementById('encInfoSize').textContent = (file.size / 1024).toFixed(1) + ' KB';
+    document.getElementById('encInfoDims').textContent = `${width} × ${height} px`;
+    document.getElementById('encInfoCap').textContent  = `~${encState.capacity.toLocaleString()} characters`;
+    document.getElementById('encInfoGrid').style.display = 'flex';
+
+    // Capacity bar
+    document.getElementById('encCapWrap').style.display = 'block';
+    document.getElementById('footerCap').textContent = `CAPACITY: ~${encState.capacity.toLocaleString()} CHARS`;
+
+    updateCapacity();
+    checkEncodeReady();
+
+    setAlert('encStatus', 'success',
+      `✓ Image loaded — ${width}×${height}px · Max ~${encState.capacity.toLocaleString()} characters.`);
+  }).catch(e => setAlert('encStatus', 'error', e.message));
+}
+
+function updateCapacity() {
+  const msg = document.getElementById('encMessage').value;
+  const len = msg.length;
+  document.getElementById('encCharCount').textContent = `${len.toLocaleString()} characters`;
+
+  if (!encState.capacity) return;
+
+  const pct   = Math.min((len / encState.capacity) * 100, 100);
+  const color = pct > 90 ? 'var(--red)' : pct > 70 ? 'var(--amber)' : 'var(--green)';
+
+  document.getElementById('encCapFill').style.width      = pct + '%';
+  document.getElementById('encCapFill').style.background = color;
+  document.getElementById('encCapFill').style.boxShadow  = `0 0 10px ${color}70`;
+  document.getElementById('encCapPct').textContent        = Math.round(pct) + '%';
+  document.getElementById('encCapPct').style.color        = color;
+  document.getElementById('encNearLimit').style.display  = pct > 85 ? 'inline' : 'none';
+
+  checkEncodeReady();
+}
+
+function checkEncodeReady() {
+  const msg   = document.getElementById('encMessage').value.trim();
+  const ready = encState.imageData && msg.length > 0;
+  document.getElementById('encodeBtn').disabled = !ready;
+}
+
+async function doEncode() {
+  const message = document.getElementById('encMessage').value;
+  const passkey = document.getElementById('encPasskey').value;
+
+  if (!encState.imageData || !message.trim()) return;
+
+  // Capacity check
+  const msgBytes   = new TextEncoder().encode(message);
+  const payBytes   = passkey ? xorCipher(msgBytes, passkey) : msgBytes;
+  const headerBytes= new TextEncoder().encode(HEADER);
+  const totalBytes = headerBytes.length + payBytes.length;
+
+  if (totalBytes > encState.capacity) {
+    setAlert('encStatus', 'error',
+      `Message too large: ${totalBytes.toLocaleString()} bytes needed, ` +
+      `but image only holds ${encState.capacity.toLocaleString()} bytes. Use a larger image.`);
+    return;
+  }
+
+  setBtnLoading('encodeBtn', true);
+  clearAlert('encStatus');
+
+  // Small delay so spinner renders
+  await new Promise(r => setTimeout(r, 40));
+
+  try {
+    // Build payload: STGNS:: header + (optionally encrypted) message bytes
+    // We store as a combined Uint8Array for the encoder
+    const combined = new Uint8Array(headerBytes.length + payBytes.length);
+    combined.set(headerBytes, 0);
+    combined.set(payBytes,    headerBytes.length);
+
+    // Encode using the raw byte approach
+    const payloadStr = Array.from(combined).map(b => String.fromCharCode(b)).join('');
+    const encoded    = lsbEncode(encState.imageData.data, payloadStr);
+
+    if (!encoded) {
+      setAlert('encStatus', 'error', 'Encoding failed — image too small for this message.');
+      return;
+    }
+
+    downloadPng(encoded, encState.width, encState.height, `steganos_${Date.now()}.png`);
+
+    setAlert('encStatus', 'success',
+      `✓ Encoded! ${message.length.toLocaleString()} characters hidden in a ` +
+      `${encState.width}×${encState.height}px PNG. ` +
+      `Downloading… The image looks identical to the original.`);
+  } catch (e) {
+    setAlert('encStatus', 'error', 'Encoding error: ' + e.message);
+  } finally {
+    setBtnLoading('encodeBtn', false);
+    checkEncodeReady();
+  }
+}
+
+function clearEncode() {
+  encState = { imageData: null, width: 0, height: 0, capacity: 0 };
+  document.getElementById('encMessage').value  = '';
+  document.getElementById('encPasskey').value  = '';
+  document.getElementById('encDropPlaceholder').style.display = 'flex';
+  document.getElementById('encImgWrap').style.display = 'none';
+  document.getElementById('encDropZone').classList.remove('has-image');
+  document.getElementById('encInfoGrid').style.display  = 'none';
+  document.getElementById('encCapWrap').style.display   = 'none';
+  document.getElementById('encCapFill').style.width     = '0%';
+  document.getElementById('encCharCount').textContent   = '0 characters';
+  document.getElementById('encNearLimit').style.display = 'none';
+  document.getElementById('encodeBtn').disabled = true;
+  document.getElementById('footerCap').textContent = '';
+  clearAlert('encStatus');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DECODE STATE
+// ─────────────────────────────────────────────────────────────────────────────
+let decState = { imageData: null, width: 0, height: 0 };
+
+function handleDecodeFile(file) {
+  if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    setAlert('decStatus', 'error', 'Please select a valid image file.');
+    return;
+  }
+  clearAlert('decStatus');
+
+  const reader = new FileReader();
+  reader.onload = e => { document.getElementById('decImg').src = e.target.result; };
+  reader.readAsDataURL(file);
+
+  loadImagePixels(file).then(({ imageData, width, height }) => {
+    decState = { imageData, width, height };
+
+    document.getElementById('decDropPlaceholder').style.display = 'none';
+    document.getElementById('decImgWrap').style.display = 'block';
+    document.getElementById('decDropZone').classList.add('has-image');
+    document.getElementById('decImgMeta').innerHTML =
+      makeTag(`${width}×${height}px`, 'tag-purple') +
+      makeTag(file.name, 'tag-muted') +
+      makeTag('Click to change', 'tag-muted');
+    document.getElementById('decodeBtn').disabled = false;
+
+    // Reset output
+    document.getElementById('decOutput').innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">⬜</div>
+        <div class="empty-title">IMAGE LOADED — READY TO DECODE</div>
+        <div class="empty-body">Click "Extract Message" to begin extraction.</div>
+      </div>`;
+  }).catch(e => setAlert('decStatus', 'error', e.message));
+}
+
+async function doDecode() {
+  if (!decState.imageData) return;
+
+  setBtnLoading('decodeBtn', true);
+  clearAlert('decStatus');
+
+  await new Promise(r => setTimeout(r, 40));
+
+  try {
+    const raw = lsbDecode(decState.imageData.data);
+
+    if (raw === null) {
+      setAlert('decStatus', 'error',
+        'No hidden data found. This image was not encoded with STEGANOS, or was re-compressed (JPEG destroys LSB data).');
+      showEmptyOutput('NO DATA FOUND',
+        'This image contains no STEGANOS-encoded data. Make sure you are using the correct stego PNG.');
+      return;
+    }
+
+    // Check STGNS:: header (first 7 bytes as chars)
+    if (!raw.startsWith(HEADER)) {
+      setAlert('decStatus', 'error',
+        'No STEGANOS signature detected. This image was not encoded with this tool.');
+      showEmptyOutput('INVALID SIGNATURE', 'The image lacks the STGNS:: header. Not a STEGANOS file.');
+      return;
+    }
+
+    // Strip header — remainder is raw bytes (potentially XOR-encrypted)
+    const bodyStr  = raw.slice(HEADER.length);
+    const bodyBytes= new Uint8Array([...bodyStr].map(c => c.charCodeAt(0)));
+
+    const passkey   = document.getElementById('decPasskey').value;
+    let finalBytes  = passkey ? xorCipher(bodyBytes, passkey) : bodyBytes;
+    let finalText   = new TextDecoder().decode(finalBytes);
+
+    if (!isPrintable(finalText)) {
+      setAlert('decStatus', 'error',
+        'Decryption produced non-printable characters — wrong passkey? Re-try with the correct key.');
+      showEmptyOutput('DECRYPTION FAILED', 'The extracted bytes are not readable. Try a different passkey.');
+      return;
+    }
+
+    // ── SUCCESS ──
+    const charCount = finalText.length;
+    setAlert('decStatus', 'success',
+      `✓ Message extracted — ${charCount.toLocaleString()} characters${passkey ? ' (decrypted)' : ''}.`);
+
+    document.getElementById('decOutput').innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:.8rem;animation:fadeUp .35s ease">
+        <div style="display:flex;gap:.45rem;flex-wrap:wrap;">
+          ${makeTag(charCount.toLocaleString() + ' chars', 'tag-purple')}
+          ${passkey ? makeTag('DECRYPTED','tag-amber') : makeTag('PLAIN TEXT','tag-muted')}
+          ${makeTag('STGNS:: VERIFIED','tag-green')}
+        </div>
+        <div class="decoded-box">
+          <pre class="decoded-text" id="decodedContent">${escHtml(finalText)}</pre>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-ghost-p" onclick="copyDecoded()">COPY TEXT</button>
+          <button class="btn btn-ghost-p" onclick="downloadDecoded()">DOWNLOAD .TXT</button>
+        </div>
+      </div>`;
+
+    // Store for copy/download
+    window._lastDecoded = finalText;
+
+  } catch (e) {
+    setAlert('decStatus', 'error', 'Decoding error: ' + e.message);
+  } finally {
+    setBtnLoading('decodeBtn', false);
+    document.getElementById('decodeBtn').disabled = !decState.imageData;
+  }
+}
+
+function showEmptyOutput(title, body) {
+  document.getElementById('decOutput').innerHTML = `
+    <div class="empty-state">
+      <div class="empty-icon" style="color:var(--red);opacity:.6">✕</div>
+      <div class="empty-title" style="color:var(--red)">${escHtml(title)}</div>
+      <div class="empty-body">${escHtml(body)}</div>
+    </div>`;
+}
+
+function clearDecode() {
+  decState = { imageData: null, width: 0, height: 0 };
+  document.getElementById('decDropPlaceholder').style.display = 'flex';
+  document.getElementById('decImgWrap').style.display = 'none';
+  document.getElementById('decDropZone').classList.remove('has-image');
+  document.getElementById('decPasskey').value = '';
+  document.getElementById('decodeBtn').disabled = true;
+  document.getElementById('decOutput').innerHTML = `
+    <div class="empty-state">
+      <div class="empty-icon">⬜</div>
+      <div class="empty-title">AWAITING EXTRACTION</div>
+      <div class="empty-body">Load a STEGANOS-encoded PNG and click "Extract Message".</div>
+    </div>`;
+  clearAlert('decStatus');
+  window._lastDecoded = null;
+}
+
+function copyDecoded() {
+  if (!window._lastDecoded) return;
+  navigator.clipboard.writeText(window._lastDecoded).then(() => {
+    setAlert('decStatus', 'info', 'Copied to clipboard.');
+  });
+}
+
+function downloadDecoded() {
+  if (!window._lastDecoded) return;
+  const url = URL.createObjectURL(new Blob([window._lastDecoded], { type:'text/plain' }));
+  const a   = Object.assign(document.createElement('a'),
+    { href:url, download:`steganos_message_${Date.now()}.txt` });
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DRAG & DROP SETUP
+// ─────────────────────────────────────────────────────────────────────────────
+function setupDrop(zoneId, handler) {
+  const zone = document.getElementById(zoneId);
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) handler(file);
+  });
+}
+setupDrop('encDropZone', handleEncodeFile);
+setupDrop('decDropZone', handleDecodeFile);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UTILITY
+// ─────────────────────────────────────────────────────────────────────────────
+function escHtml(str) {
+  return str
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+// Re-check encode button whenever message changes
+document.getElementById('encMessage').addEventListener('input', checkEncodeReady);
+</script>
+</body>
+</html>
