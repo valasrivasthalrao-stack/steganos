@@ -1,0 +1,89 @@
+/* Alert */
+.alert{display:flex;gap:.55rem;align-items:flex-start;padding:.72rem 1rem;border-radius:5px;border:1px solid;font-size:.78rem;line-height:1.55;animation:fadeIn .28s ease}
+.aIcon{flex-shrink:0;font-weight:700}
+.a_success{background:rgba(0,255,157,.07);border-color:rgba(0,255,157,.3);color:var(--green)}
+.a_error{background:rgba(255,64,96,.07);border-color:rgba(255,64,96,.3);color:var(--red)}
+.a_info{background:rgba(139,92,246,.07);border-color:rgba(139,92,246,.3);color:#c4a8ff}
+.a_warn{background:rgba(245,158,11,.07);border-color:rgba(245,158,11,.3);color:var(--amber)}
+
+/* Button */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:.48rem;padding:.7rem 1.55rem;border-radius:5px;border:none;font-size:.77rem;font-weight:700;letter-spacing:.17em;text-transform:uppercase;cursor:pointer;transition:all .17s;white-space:nowrap}
+.btn:hover:not(:disabled){filter:brightness(1.1)}
+.btn:active:not(:disabled){transform:scale(.978)}
+.btn:disabled{opacity:.34;cursor:not-allowed}
+.b_green{background:var(--green);color:#000}
+.b_green:hover:not(:disabled){box-shadow:var(--gg)}
+.b_purple{background:var(--purple);color:#fff}
+.b_purple:hover:not(:disabled){box-shadow:var(--gp)}
+.b_ghost{background:transparent;color:var(--green);border:1px solid rgba(0,255,157,.38)}
+.b_ghost:hover:not(:disabled){border-color:var(--green);box-shadow:var(--gg)}
+.b_ghostP{background:transparent;color:var(--purple);border:1px solid rgba(139,92,246,.38)}
+.b_ghostP:hover:not(:disabled){border-color:var(--purple);box-shadow:var(--gp)}
+.b_danger{background:transparent;color:var(--red);border:1px solid rgba(255,64,96,.3)}
+.b_danger:hover:not(:disabled){box-shadow:var(--gr)}
+.spin{width:14px;height:14px;border:2px solid rgba(0,0,0,.18);border-top-color:#000;border-radius:50%;animation:spin .65s linear infinite;display:inline-block}
+.b_purple .spin,.b_ghostP .spin{border-color:rgba(255,255,255,.2);border-top-color:#fff}
+
+/* Panel */
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.ph{display:flex;align-items:center;gap:.5rem;padding:.65rem 1.2rem;border-bottom:1px solid var(--border);font-size:.64rem;letter-spacing:.28em;text-transform:uppercase;color:var(--muted);background:var(--surface2)}
+.pb{padding:1.15rem;display:flex;flex-direction:column;gap:.9rem}
+
+/* DropZone */
+.drop{border:1.5px dashed var(--border2);border-radius:7px;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
+.drop::before{content:'';position:absolute;top:0;left:-100%;width:50%;height:1px;background:linear-gradient(90deg,transparent,var(--green),transparent);transition:left .65s ease}
+.drop:hover::before,.dragOver::before{left:160%}
+.drop:hover{border-color:var(--green);background:rgba(0,255,157,.022)}
+.dragOver{border-color:var(--green)!important;background:rgba(0,255,157,.05)!important}
+.dropActive{border-style:solid}
+
+/* DropPlaceholder */
+.dropPH{padding:3.4rem 2rem;display:flex;flex-direction:column;align-items:center;gap:.72rem;text-align:center}
+.dropHex{font-size:3.2rem;color:var(--muted);line-height:1}
+.dropTitle{font-size:.86rem;letter-spacing:.2em;font-weight:700}
+.dropSub{font-size:.7rem;color:var(--muted);line-height:1.7}
+
+/* Image */
+.imgWrap{position:relative;overflow:hidden}
+.imgWrap::after{content:'';position:absolute;left:0;width:100%;height:1px;background:linear-gradient(90deg,transparent,var(--green),transparent);opacity:.3;animation:scanLine 2.2s linear infinite}
+.img{width:100%;display:block;max-height:280px;object-fit:contain;background:#030306}
+.clearBtn{position:absolute;top:.5rem;right:.5rem;background:rgba(0,0,0,.7);border:1px solid var(--border2);color:var(--muted);border-radius:3px;width:26px;height:26px;cursor:pointer;font-size:.75rem;transition:all .15s;z-index:2}
+.clearBtn:hover{color:var(--red);border-color:var(--red)}
+.imgMeta{display:flex;gap:.4rem;flex-wrap:wrap;padding:.52rem .75rem;background:rgba(0,0,0,.65)}
+.imgTag{font-size:.61rem;letter-spacing:.1em;color:var(--muted);border:1px solid var(--border2);border-radius:2px;padding:.1rem .4rem;background:rgba(255,255,255,.03)}
+
+/* CapBar */
+.cap{display:flex;flex-direction:column;gap:.38rem}
+.capRow{display:flex;justify-content:space-between;font-size:.63rem;letter-spacing:.1em;color:var(--muted)}
+.capTrack{height:3px;background:var(--border);border-radius:2px;overflow:hidden}
+.capFill{height:100%;border-radius:2px;transition:width .33s ease,background .33s ease}
+
+/* Tag */
+.tag{display:inline-block;padding:.17rem .5rem;border-radius:3px;border:1px solid;font-size:.61rem;letter-spacing:.11em;text-transform:uppercase}
+
+/* PassField */
+.passRow{display:flex;align-items:center;background:rgba(0,0,0,.28);border:1px solid var(--border);border-radius:5px;overflow:hidden;transition:border-color .2s}
+.passRow:focus-within{border-color:var(--fc,var(--amber))}
+.passInput{flex:1;background:transparent;border:none;color:var(--text);font-size:.87rem;padding:.73rem 1rem;outline:none;font-family:var(--mono)}
+.passInput::placeholder{color:var(--muted)}
+.eye{background:transparent;border:none;color:var(--muted);padding:0 .9rem;font-size:1.05rem;cursor:pointer;transition:color .15s;font-family:var(--mono)}
+.eye:hover{color:var(--text)}
+
+/* InfoGrid */
+.infoGrid{display:flex;flex-direction:column;gap:.26rem}
+.infoRow{display:flex;justify-content:space-between;align-items:center;padding:.26rem 0;border-bottom:1px solid var(--border)}
+.infoRow:last-child{border-bottom:none}
+.infoK{font-size:.59rem;letter-spacing:.2em;color:var(--muted)}
+.infoV{font-size:.76rem;color:var(--text)}
+
+/* Steps */
+.steps{display:flex;flex-direction:column;gap:.55rem}
+.step{display:flex;align-items:flex-start;gap:.65rem}
+.stepN{font-size:.59rem;border:1px solid;padding:.1rem .43rem;border-radius:2px;flex-shrink:0;margin-top:.12rem;letter-spacing:.08em}
+.stepT{font-size:.75rem;color:var(--text);line-height:1.6}
+.stepT strong{color:inherit;font-weight:700}
+.stepT code{color:var(--green);font-family:var(--mono)}
+
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes scanLine{from{top:-1px}to{top:100%}}

@@ -1,0 +1,51 @@
+:root {
+  --bg:       #08080f;
+  --bg2:      #05050a;
+  --surface:  #0d0d1a;
+  --surface2: #111120;
+  --border:   #1a1a30;
+  --border2:  #252545;
+  --green:    #00ff9d;
+  --purple:   #8b5cf6;
+  --red:      #ff4060;
+  --amber:    #f59e0b;
+  --text:     #c8c8e0;
+  --muted:    #44445a;
+  --white:    #ffffff;
+  --mono:    'Share Tech Mono','Courier New',monospace;
+  --display: 'Syne',sans-serif;
+  --gg: 0 0 26px rgba(0,255,157,.26);
+  --gp: 0 0 26px rgba(139,92,246,.26);
+  --gr: 0 0 26px rgba(255,64,96,.26);
+  --ga: 0 0 26px rgba(245,158,11,.26);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);
+  font-family:var(--mono);font-size:14px;-webkit-font-smoothing:antialiased}
+#root{display:flex;flex-direction:column;min-height:100%}
+
+/* scanlines */
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;
+  background:repeating-linear-gradient(0deg,transparent,transparent 3px,
+    rgba(0,255,157,.009) 3px,rgba(0,255,157,.009) 4px)}
+
+::-webkit-scrollbar{width:5px;background:var(--bg2)}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.2}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes glitch{0%,100%{clip-path:inset(0 0 96% 0)}20%{clip-path:inset(28% 0 52% 0)}
+  40%{clip-path:inset(62% 0 18% 0)}60%{clip-path:inset(12% 0 78% 0)}80%{clip-path:inset(82% 0 3% 0)}}
+@keyframes scanLine{from{top:-1px}to{top:100%}}
+@keyframes boot{0%{opacity:0;letter-spacing:1em}60%{opacity:1;letter-spacing:.3em}100%{letter-spacing:.15em}}
+
+.fu  {animation:fadeUp .4s ease both}
+.fu1 {animation:fadeUp .4s .06s ease both}
+.fu2 {animation:fadeUp .4s .12s ease both}
+.fu3 {animation:fadeUp .4s .18s ease both}
+.fu4 {animation:fadeUp .4s .24s ease both}
+
+button,input,textarea{font-family:var(--mono)}
+a{color:var(--green)}

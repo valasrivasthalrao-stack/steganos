@@ -1,0 +1,28 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "🖥 Spring Boot Backend",
+      "type": "java",
+      "request": "launch",
+      "mainClass": "com.steganos.SteganoApplication",
+      "projectName": "steganos-backend"
+    },
+    {
+      "name": "⚛ React Frontend",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "${workspaceFolder}/frontend",
+      "console": "integratedTerminal"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "🚀 Full Stack",
+      "configurations": ["🖥 Spring Boot Backend", "⚛ React Frontend"],
+      "stopAll": true
+    }
+  ]
+}

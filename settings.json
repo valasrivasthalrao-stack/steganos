@@ -1,0 +1,16 @@
+{
+  "editor.formatOnSave": true,
+  "editor.tabSize": 2,
+  "java.configuration.runtimes": [{ "name": "JavaSE-17", "default": true }],
+  "files.associations": {
+    "*.jsx": "javascriptreact",
+    "*.module.css": "css"
+  },
+  "emmet.includeLanguages": { "javascript": "javascriptreact" },
+  "explorer.fileNesting.enabled": true,
+  "explorer.fileNesting.patterns": {
+    "*.jsx": "${capture}.module.css",
+    "pom.xml": "mvnw, mvnw.cmd, .mvn",
+    "vite.config.js": "package.json, package-lock.json, .gitignore, index.html"
+  }
+}
